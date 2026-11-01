@@ -1,0 +1,37 @@
+{
+  "name": "vybe-media-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "International music, celebrity, artist, and pop culture news media platform (Phase 2 Database + Seed)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit",
+    "ai:scan": "node scripts/ai-pipeline-scan.js",
+    "db:seed": "node prisma/seed.ts",
+    "prisma:seed": "node prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^2.4.3",
+    "next": "14.2.35",
+    "next-auth": "^4.24.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "20.19.43",
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "autoprefixer": "10.6.1",
+    "postcss": "8.5.32",
+    "prisma": "^6.19.3",
+    "tailwindcss": "3.4.19",
+    "typescript": "5.9.3"
+  }
+}

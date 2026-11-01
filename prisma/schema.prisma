@@ -1,0 +1,417 @@
+// ============================================================================
+// VYBE Media Platform — Prisma Schema (Phase 2)
+// ============================================================================
+// Local Development : provider = "sqlite"     (DATABASE_URL="file:./dev.db")
+// Production        : provider = "postgresql" (DATABASE_URL="postgresql://...")
+//
+// Portability Note:
+// All 13 models and 7 enums below use portable Prisma scalar types (String,
+// Int, Float, Boolean, DateTime, and Prisma Enums) supported by both the
+// SQLite connector (Prisma 5.15+ / 6.x) and PostgreSQL connector without
+// requiring model field changes when switching providers.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum Role {
+  READER
+  AUTHOR
+  EDITOR
+  ADMIN
+}
+
+enum ArticleStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CommentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+enum TwitterCardType {
+  summary
+  summary_large_image
+}
+
+enum SourceType {
+  RSS
+  PRESS_RELEASE
+  OFFICIAL_STATEMENT
+  MANUAL
+}
+
+enum LeadStatus {
+  NEW
+  APPROVED
+  REJECTED
+  CONVERTED
+}
+
+enum SubscriberStatus {
+  PENDING_CONFIRMATION
+  SUBSCRIBED
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+enum NewsletterFrequency {
+  DAILY
+  WEEKLY
+  BREAKING_ONLY
+}
+
+// ----------------------------------------------------------------------------
+// 1. User
+// ----------------------------------------------------------------------------
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  passwordHash        String?
+  displayName         String
+  avatarUrl           String?
+  role                Role      @default(READER)
+  isActive            Boolean   @default(true)
+  emailVerifiedAt     DateTime?
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  authorProfile     Author?
+  approvedArticles  Article[]  @relation("ApprovedArticles")
+  bookmarks         Bookmark[]
+  comments          Comment[]  @relation("UserComments")
+  moderatedComments Comment[]  @relation("ModeratedComments")
+  uploadedMedia     Media[]
+
+  @@index([email])
+  @@index([role])
+  @@index([resetTokenHash])
+}
+
+// ----------------------------------------------------------------------------
+// 2. Author
+// ----------------------------------------------------------------------------
+
+model Author {
+  id              String   @id @default(uuid())
+  userId          String?  @unique
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  slug            String   @unique
+  penName         String
+  roleTitle       String
+  bio             String
+  avatarUrl       String?
+  socialLinksJson String?
+  isStaff         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  articles Article[]
+
+  @@index([slug])
+}
+
+// ----------------------------------------------------------------------------
+// 3. Article
+// ----------------------------------------------------------------------------
+
+model Article {
+  id                 String        @id @default(uuid())
+  slug               String        @unique
+  title              String
+  subtitle           String?
+  excerpt            String
+  bodyMarkdown       String
+  bodyHtml           String?
+  status             ArticleStatus @default(DRAFT)
+  isFeatured         Boolean       @default(false)
+  isTrending         Boolean       @default(false)
+  trendingRank       Int?
+  isAiAssisted       Boolean       @default(false)
+  isSampleContent    Boolean       @default(false)
+  editorialNote      String?
+  aiMetadataJson     String?
+  coverGradient      String?
+  coverLabel         String?
+  publishedDisplay   String?
+  readingTimeMinutes Int           @default(3)
+  viewCount          Int           @default(0)
+
+  authorId String
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  heroMediaId String?
+  heroMedia   Media?  @relation("ArticleHeroMedia", fields: [heroMediaId], references: [id], onDelete: SetNull)
+
+  seoMetadataId String?      @unique
+  seoMetadata   SEOMetadata? @relation(fields: [seoMetadataId], references: [id], onDelete: SetNull)
+
+  sourceId String?
+  source   Source? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  approvedById String?
+  approvedBy   User?     @relation("ApprovedArticles", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  articleTags ArticleTag[]
+  bookmarks   Bookmark[]
+  comments    Comment[]
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([isFeatured])
+  @@index([isTrending])
+  @@index([categoryId, status, publishedAt(sort: Desc)])
+  @@index([status, isFeatured, publishedAt(sort: Desc)])
+}
+
+// ----------------------------------------------------------------------------
+// 4. Category
+// ----------------------------------------------------------------------------
+
+model Category {
+  id          String    @id @default(uuid())
+  slug        String    @unique
+  name        String
+  description String
+  accentColor String    @default("from-indigo-600 via-violet-600 to-purple-700")
+  parentId    String?
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryHierarchy")
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  articles       Article[]
+  trendingTopics TrendingTopic[]
+
+  @@index([slug])
+  @@index([sortOrder])
+}
+
+// ----------------------------------------------------------------------------
+// 5. Tag
+// ----------------------------------------------------------------------------
+
+model Tag {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  articleTags ArticleTag[]
+
+  @@index([slug])
+}
+
+// ----------------------------------------------------------------------------
+// 6. ArticleTag (M:N Join Table)
+// ----------------------------------------------------------------------------
+
+model ArticleTag {
+  articleId  String
+  article    Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tagId      String
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@id([articleId, tagId])
+  @@index([tagId, articleId])
+}
+
+// ----------------------------------------------------------------------------
+// 7. Bookmark
+// ----------------------------------------------------------------------------
+
+model Bookmark {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  articleId String
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+}
+
+// ----------------------------------------------------------------------------
+// 8. Comment
+// ----------------------------------------------------------------------------
+
+model Comment {
+  id            String        @id @default(uuid())
+  articleId     String
+  article       Article       @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User          @relation("UserComments", fields: [userId], references: [id], onDelete: Cascade)
+  parentId      String?
+  parent        Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       Comment[]     @relation("CommentReplies")
+  body          String
+  status        CommentStatus @default(PENDING)
+  moderatedById String?
+  moderatedBy   User?         @relation("ModeratedComments", fields: [moderatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([articleId])
+  @@index([userId])
+  @@index([status])
+}
+
+// ----------------------------------------------------------------------------
+// 9. Media
+// ----------------------------------------------------------------------------
+
+model Media {
+  id           String   @id @default(uuid())
+  url          String
+  storageKey   String   @unique
+  altText      String
+  caption      String?
+  credit       String
+  mimeType     String
+  width        Int?
+  height       Int?
+  sizeBytes    Int
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+
+  heroForArticles Article[] @relation("ArticleHeroMedia")
+}
+
+// ----------------------------------------------------------------------------
+// 10. SEOMetadata
+// ----------------------------------------------------------------------------
+
+model SEOMetadata {
+  id                 String          @id @default(uuid())
+  metaTitle          String?
+  metaDescription    String?
+  canonicalUrl       String?
+  ogTitle            String?
+  ogDescription      String?
+  ogImageUrl         String?
+  twitterCardType    TwitterCardType @default(summary_large_image)
+  noIndex            Boolean         @default(false)
+  noFollow           Boolean         @default(false)
+  structuredDataJson String?
+  updatedAt          DateTime        @updatedAt
+
+  article Article?
+}
+
+// ----------------------------------------------------------------------------
+// 11. TrendingTopic
+// ----------------------------------------------------------------------------
+
+model TrendingTopic {
+  id         String    @id @default(uuid())
+  slug       String    @unique
+  label      String
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  score      Float     @default(0.0)
+  velocity   Float     @default(0.0)
+  isPinned   Boolean   @default(false)
+  expiresAt  DateTime?
+  updatedAt  DateTime  @updatedAt
+
+  @@index([slug])
+  @@index([score(sort: Desc)])
+  @@index([categoryId])
+}
+
+// ----------------------------------------------------------------------------
+// 12. Source
+// ----------------------------------------------------------------------------
+
+model Source {
+  id            String     @id @default(uuid())
+  name          String
+  domain        String
+  feedUrl       String?    @unique
+  sourceType    SourceType
+  trustTier     Int        @default(1)
+  isEnabled     Boolean    @default(true)
+  lastFetchedAt DateTime?
+  createdAt     DateTime   @default(now())
+
+  articles Article[]
+  leads    Lead[]
+}
+
+// ----------------------------------------------------------------------------
+// 13. NewsletterSubscriber
+// ----------------------------------------------------------------------------
+
+model NewsletterSubscriber {
+  id                  String              @id @default(uuid())
+  email               String              @unique
+  status              SubscriberStatus    @default(PENDING_CONFIRMATION)
+  frequencyPreference NewsletterFrequency @default(WEEKLY)
+  confirmTokenHash    String?
+  confirmedAt         DateTime?
+  unsubscribedAt      DateTime?
+  createdAt           DateTime            @default(now())
+
+  @@index([email])
+  @@index([status])
+}
+
+// ----------------------------------------------------------------------------
+// 14. Lead
+// ----------------------------------------------------------------------------
+
+model Lead {
+  id                 String     @id @default(uuid())
+  title              String
+  url                String     @unique
+  summary            String
+  publishedAt        DateTime?
+  sourceId           String
+  source             Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  status             LeadStatus @default(NEW)
+  verifiedFacts      String?
+  confidenceScore    Float      @default(1.0)
+  convertedArticleId String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([sourceId])
+  @@index([status])
+}
