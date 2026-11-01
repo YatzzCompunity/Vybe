@@ -1,8 +1,12 @@
 // ============================================================================
 // VYBE Media Platform — Prisma Schema (Phase 2)
 // ============================================================================
-// Local Development : provider = "sqlite"     (DATABASE_URL="file:./dev.db")
-// Production        : provider = "postgresql" (DATABASE_URL="postgresql://...")
+// Production (Vercel + Prisma Postgres) : provider = "postgresql"
+// Local development now also uses PostgreSQL via DATABASE_URL (the Vercel
+// Prisma Postgres connection string). The old local SQLite dev.db is no
+// longer used by this schema. Existing SQLite migrations are NOT applied
+// to PostgreSQL (they contain SQLite-specific DATETIME types); the first
+// PostgreSQL schema is created with `prisma db push` (see vercel.json).
 //
 // Portability Note:
 // All 13 models and 7 enums below use portable Prisma scalar types (String,
@@ -16,7 +20,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
